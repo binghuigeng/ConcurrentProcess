@@ -60,31 +60,45 @@
 ** • 性能优化：代码中还有一些可以优化的点，例如使用无锁队列、减少锁的粒度等。
 ** • 动态线程池：可以根据负载动态调整线程池的大小。
 **
+**
+** @revision 实现一个不会在外部进行排序的多线程调度机制
+** 可以在 ThreadPool 类中通过维护一个有序的任务队列来实现，确保任务在处理完成后能够按照原始输入的顺序输出。
+** 这可以通过多种方式来实现，但一种有效的方式是使用 std::future 和 std::promise。
+**
+** 我们将使用 std::promise 来存储每个 Buffer 的处理结果，并通过 std::future 来确保按顺序获取结果。
+** 原理是在处理时还保留每个任务的原始索引，以便将来能够按顺序集中处理结果。这样我们就没有必要在外部进行排序。
+**
+** 关键变化和功能解释
+** 1. 改进的任务提交逻辑
+**     • 在 ThreadPool 的 enqueue 函数中，现在返回一个 std::future<Buffer>，用于在将任务添加到队列时跟踪结果。这通过 std::promise 完成。
+** 2. 任务队列支持
+**     • 每个任务使用 std::function<void()> 类型的 lambda 表达式来处理 Buffer，并在处理完成后设置 promise 的值。
+** 3. 按顺序获取结果
+**     • 在 main 函数中，我们通过 std::future<Buffer> 抓取处理的每个 Buffer，这样我们能够保证按照提交的顺序获取结果
+**
 ****************************************************************************************************************/
-
 #include <iostream>
 #include <vector>
 #include <queue>
 #include <thread>
 #include <mutex>
 #include <condition_variable>
-#include <chrono>
+#include <future>
 
 // Buffer 结构体
 struct Buffer {
-    int id;          // 序号
-    std::vector<int> data; // 数据
-    std::vector<int> result; // 结果
-    bool ready = false;    // 是否可以处理
+    int id;                       // 序号
+    std::vector<int> data;       // 数据
+    std::vector<int> result;     // 处理结果
 };
 
-// 线程池
+// 线程池类
 class ThreadPool {
 public:
-    ThreadPool(size_t numThreads, std::function<void(Buffer&)> callback) :
-        m_numThreads(numThreads), m_callback(callback), m_threads(numThreads) {
+    ThreadPool(size_t numThreads, std::function<void(Buffer&)> callback)
+        : m_numThreads(numThreads), m_callback(callback) {
         for (size_t i = 0; i < m_numThreads; ++i) {
-            m_threads[i] = std::thread(&ThreadPool::workerThread, this, i);
+            m_threads.emplace_back(&ThreadPool::workerThread, this);
         }
     }
 
@@ -99,105 +113,81 @@ public:
         }
     }
 
-    void enqueue(Buffer buffer) {
+    // 提交任务
+    std::future<Buffer> enqueue(Buffer buffer) {
+        std::shared_ptr<std::promise<Buffer>> promise = std::make_shared<std::promise<Buffer>>();
+        auto future = promise->get_future();
+
         {
             std::unique_lock<std::mutex> lock(m_mutex);
-            m_taskQueue.push(std::move(buffer));
+            m_taskQueue.push([buffer, promise, this]() mutable {
+                m_callback(buffer);
+                promise->set_value(buffer);
+            });
         }
         m_condition.notify_one();
+        return future;
     }
 
 private:
-    void workerThread(size_t threadId) {
+    void workerThread() {
         while (true) {
-            Buffer buffer;
+            std::function<void()> task;
             {
                 std::unique_lock<std::mutex> lock(m_mutex);
                 m_condition.wait(lock, [this] { return m_stop || !m_taskQueue.empty(); });
-                if (m_stop && m_taskQueue.empty()) {
-                    return;
-                }
-                buffer = std::move(m_taskQueue.front());
+                if (m_stop && m_taskQueue.empty()) return;
+                task = std::move(m_taskQueue.front());
                 m_taskQueue.pop();
             }
-            {
-                std::unique_lock<std::mutex> lock(m_mutex);
-                std::cout << "Thread " << threadId << " is processing buffer " << buffer.id << std::endl;
-            }
-
-            m_callback(buffer); // 调用回调函数，执行耗时操作
-            {
-                std::unique_lock<std::mutex> lock(m_mutex);
-                m_completeQueue.push(std::move(buffer));
-            }
-            m_completeCondition.notify_one();
+            task(); // 执行任务
         }
     }
 
-public:
-    Buffer getCompletedBuffer() {
-        std::unique_lock<std::mutex> lock(m_mutex);
-        m_completeCondition.wait(lock, [this] { return !m_completeQueue.empty(); });
-        Buffer buffer = std::move(m_completeQueue.front());
-        m_completeQueue.pop();
-        return buffer;
-    }
-
-private:
-    size_t m_numThreads;
-    std::function<void(Buffer&)> m_callback;
-    std::vector<std::thread> m_threads;
-    std::queue<Buffer> m_taskQueue;
-    std::queue<Buffer> m_completeQueue;
-    std::mutex m_mutex;
-    std::condition_variable m_condition;
-    std::condition_variable m_completeCondition;
-    bool m_stop = false;
+    size_t m_numThreads;                                  // 线程数量
+    std::function<void(Buffer&)> m_callback;             // 耗时操作回调
+    std::vector<std::thread> m_threads;                  // 工作线程
+    std::queue<std::function<void()>> m_taskQueue;      // 任务队列
+    std::mutex m_mutex;                                  // 互斥锁
+    std::condition_variable m_condition;                 // 条件变量
+    bool m_stop = false;                                 // 是否停止标志
 };
 
-// 模拟耗时操作的回调函数
 void simulateExpensiveOperation(Buffer& buffer) {
-    // 模拟耗时操作
     for (int& data : buffer.data) {
-        buffer.result.push_back(data * 2); // 简单地将数据乘以 2
-        std::this_thread::sleep_for(std::chrono::milliseconds(100)); // 模拟耗时
+        buffer.result.push_back(data * 2); // 模拟一个耗时操作，将数据乘以 2
+        std::this_thread::sleep_for(std::chrono::milliseconds(100)); // 模拟延迟
     }
 }
 
-int main() {
+int main()
+{
     // 获取当前时间，作为开始时间
     auto start = std::chrono::high_resolution_clock::now();
 
-    // 线程池大小
-    size_t numThreads = 4;
-    // 创建线程池，传入耗时操作的回调函数
-    ThreadPool pool(numThreads, simulateExpensiveOperation);
+    // 创建线程池，指定线程数量和耗时操作的回调函数
+    ThreadPool pool(4, simulateExpensiveOperation);
 
     // 模拟输入数据流
     std::vector<Buffer> inputBuffers;
     for (int i = 0; i < 10; ++i) {
         Buffer buffer;
         buffer.id = i;
-        buffer.data = std::vector<int>(10, i); // 每个 Buffer 包含 10 个值为 i 的数据
+        buffer.data = std::vector<int>(10, i); // 每个 Buffer 包含 10 个数据
         inputBuffers.push_back(std::move(buffer));
     }
 
-    // 将 Buffer 提交到线程池进行处理
+    // 提交任务并收集结果
+    std::vector<std::future<Buffer>> futures;
     for (Buffer& buffer : inputBuffers) {
-        pool.enqueue(std::move(buffer));
+        futures.push_back(pool.enqueue(std::move(buffer)));
     }
 
-    // 按照顺序获取处理结果
+    // 获取按原始顺序处理的结果
     std::vector<Buffer> outputBuffers;
-    for (int i = 0; i < inputBuffers.size(); ++i) {
-        Buffer buffer = pool.getCompletedBuffer();
-        outputBuffers.push_back(std::move(buffer));
+    for (auto& future : futures) {
+        outputBuffers.push_back(future.get()); // 按顺序获取结果
     }
-
-    // 验证结果的顺序
-    std::sort(outputBuffers.begin(), outputBuffers.end(), [](const Buffer& a, const Buffer& b) {
-        return a.id < b.id;
-    });
 
     // 输出处理结果
     for (const Buffer& buffer : outputBuffers) {
