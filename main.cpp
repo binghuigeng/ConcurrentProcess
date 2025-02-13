@@ -76,6 +76,9 @@
 ** 3. 按顺序获取结果
 **     • 在 main 函数中，我们通过 std::future<Buffer> 抓取处理的每个 Buffer，这样我们能够保证按照提交的顺序获取结果
 **
+**
+** @revision2 将 Buffer 改为 std::vector<int>
+**
 ****************************************************************************************************************/
 #include <iostream>
 #include <vector>
@@ -85,17 +88,10 @@
 #include <condition_variable>
 #include <future>
 
-// Buffer 结构体
-struct Buffer {
-    int id;                       // 序号
-    std::vector<int> data;       // 数据
-    std::vector<int> result;     // 处理结果
-};
-
 // 线程池类
 class ThreadPool {
 public:
-    ThreadPool(size_t numThreads, std::function<void(Buffer&)> callback)
+    ThreadPool(size_t numThreads, std::function<void(std::vector<int>&)> callback)
         : m_numThreads(numThreads), m_callback(callback) {
         for (size_t i = 0; i < m_numThreads; ++i) {
             m_threads.emplace_back(&ThreadPool::workerThread, this);
@@ -114,15 +110,15 @@ public:
     }
 
     // 提交任务
-    std::future<Buffer> enqueue(Buffer buffer) {
-        std::shared_ptr<std::promise<Buffer>> promise = std::make_shared<std::promise<Buffer>>();
+    std::future<std::vector<int>> enqueue(std::vector<int> data) {
+        std::shared_ptr<std::promise<std::vector<int>>> promise = std::make_shared<std::promise<std::vector<int>>>();
         auto future = promise->get_future();
 
         {
             std::unique_lock<std::mutex> lock(m_mutex);
-            m_taskQueue.push([buffer, promise, this]() mutable {
-                m_callback(buffer);
-                promise->set_value(buffer);
+            m_taskQueue.push([data, promise, this]() mutable {
+                m_callback(data);
+                promise->set_value(data);
             });
         }
         m_condition.notify_one();
@@ -145,7 +141,7 @@ private:
     }
 
     size_t m_numThreads;                                  // 线程数量
-    std::function<void(Buffer&)> m_callback;             // 耗时操作回调
+    std::function<void(std::vector<int>&)> m_callback;   // 耗时操作回调
     std::vector<std::thread> m_threads;                  // 工作线程
     std::queue<std::function<void()>> m_taskQueue;      // 任务队列
     std::mutex m_mutex;                                  // 互斥锁
@@ -153,9 +149,11 @@ private:
     bool m_stop = false;                                 // 是否停止标志
 };
 
-void simulateExpensiveOperation(Buffer& buffer) {
-    for (int& data : buffer.data) {
-        buffer.result.push_back(data * 2); // 模拟一个耗时操作，将数据乘以 2
+// 一个耗时的操作，处理 std::vector<int>
+void simulateExpensiveOperation(std::vector<int>& data)
+{
+    for (int& value : data) {
+        value *= 2; // 将数据乘以 2
         std::this_thread::sleep_for(std::chrono::milliseconds(100)); // 模拟延迟
     }
 }
@@ -169,30 +167,28 @@ int main()
     ThreadPool pool(4, simulateExpensiveOperation);
 
     // 模拟输入数据流
-    std::vector<Buffer> inputBuffers;
+    std::vector<std::vector<int>> inputBuffers;
     for (int i = 0; i < 10; ++i) {
-        Buffer buffer;
-        buffer.id = i;
-        buffer.data = std::vector<int>(10, i); // 每个 Buffer 包含 10 个数据
-        inputBuffers.push_back(std::move(buffer));
+        std::vector<int> data(10, i); // 每个 std::vector 包含 10 个相同的数据
+        inputBuffers.push_back(std::move(data));
     }
 
     // 提交任务并收集结果
-    std::vector<std::future<Buffer>> futures;
-    for (Buffer& buffer : inputBuffers) {
-        futures.push_back(pool.enqueue(std::move(buffer)));
+    std::vector<std::future<std::vector<int>>> futures;
+    for (auto& data : inputBuffers) {
+        futures.push_back(pool.enqueue(std::move(data))); // 提交任务
     }
 
     // 获取按原始顺序处理的结果
-    std::vector<Buffer> outputBuffers;
+    std::vector<std::vector<int>> outputBuffers;
     for (auto& future : futures) {
         outputBuffers.push_back(future.get()); // 按顺序获取结果
     }
 
     // 输出处理结果
-    for (const Buffer& buffer : outputBuffers) {
-        std::cout << "Buffer " << buffer.id << " result: ";
-        for (int result : buffer.result) {
+    for (size_t i = 0; i < outputBuffers.size(); ++i) {
+        std::cout << "Buffer " << i << " result: ";
+        for (int result : outputBuffers[i]) {
             std::cout << result << " ";
         }
         std::cout << std::endl;
