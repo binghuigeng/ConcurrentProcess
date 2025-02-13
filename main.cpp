@@ -3,7 +3,8 @@
 #include "ThreadPool.h"
 
 // 模拟耗时操作的回调函数
-void simulateExpensiveOperation(std::vector<int> aSrc, std::vector<int> &aDst)
+template<typename T>
+void simulateExpensiveOperation(std::vector<T> aSrc, std::vector<T> &aDst)
 {
     // 模拟耗时操作
     std::this_thread::sleep_for(std::chrono::seconds(1)); // 模拟耗时
@@ -12,9 +13,10 @@ void simulateExpensiveOperation(std::vector<int> aSrc, std::vector<int> &aDst)
     }
 }
 
-std::vector<int> process(std::vector<int> aSrc)
+template<typename T>
+std::vector<T> process(std::vector<T> aSrc)
 {
-    std::vector<int> ret;
+    std::vector<T> ret;
     // call SDK interface
     simulateExpensiveOperation(aSrc, ret);
     return ret;
@@ -38,7 +40,7 @@ int main()
     // 提交任务并收集结果
     std::vector<std::future<std::vector<int>>> results;
     for (auto& buffer : inputBuffers) {
-        results.push_back(pool.enqueue(process, std::move(buffer))); // 提交任务
+        results.push_back(pool.enqueue(process<int>, std::move(buffer))); // 提交任务
     }
 
     // 等待所有任务完成并输出结果
