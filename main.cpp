@@ -2,23 +2,17 @@
 
 #include "ThreadPool.h"
 
-// 模拟耗时操作的回调函数
+// 模拟耗时操作的回调函数，enqueue 方法的设计需要能够接受一个可调用对象（如函数指针或 lambda 表达式）和其参数。
 template<typename T>
-void simulateExpensiveOperation(std::vector<T> aSrc, std::vector<T> &aDst)
+std::vector<T> process(std::vector<T> &aSrc)
 {
+    std::vector<T> ret;
+
     // 模拟耗时操作
     std::this_thread::sleep_for(std::chrono::seconds(1)); // 模拟耗时
     for (int& value : aSrc) {
-        aDst.emplace_back(value * 2); // 简单地将数据乘以 2
+        ret.emplace_back(value * 2); // 简单地将数据乘以 2
     }
-}
-
-template<typename T>
-std::vector<T> process(std::vector<T> aSrc)
-{
-    std::vector<T> ret;
-    // call SDK interface
-    simulateExpensiveOperation(aSrc, ret);
     return ret;
 }
 
@@ -40,7 +34,7 @@ int main()
     // 提交任务并收集结果
     std::vector<std::future<std::vector<int>>> results;
     for (auto& buffer : inputBuffers) {
-        results.push_back(pool.enqueue(process<int>, std::move(buffer))); // 提交任务
+        results.push_back(pool.enqueue(process<int>, buffer)); // 提交任务
     }
 
     // 等待所有任务完成并输出结果
