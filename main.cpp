@@ -6,14 +6,12 @@
 template<typename T>
 std::vector<T> process(std::vector<T> &aSrc)
 {
-    std::vector<T> ret;
-
     // 模拟耗时操作
     std::this_thread::sleep_for(std::chrono::seconds(1)); // 模拟耗时
     for (int& value : aSrc) {
-        ret.emplace_back(value * 2); // 简单地将数据乘以 2
+        value *= 2; // 简单地将数据乘以 2
     }
-    return ret;
+    return aSrc;
 }
 
 int main()
