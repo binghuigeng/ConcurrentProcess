@@ -8,7 +8,7 @@ std::vector<T> process(std::vector<T> &aSrc)
 {
     // 模拟耗时操作
     std::this_thread::sleep_for(std::chrono::seconds(1)); // 模拟耗时
-    for (int& value : aSrc) {
+    for (auto& value : aSrc) {
         value *= 2; // 简单地将数据乘以 2
     }
     return aSrc;
