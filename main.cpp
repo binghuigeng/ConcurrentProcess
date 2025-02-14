@@ -4,22 +4,22 @@
 
 // 模拟耗时操作的回调函数，enqueue 方法的设计需要能够接受一个可调用对象（如函数指针或 lambda 表达式）和其参数。
 template<typename T>
-int process(std::vector<T> &aSrc)
+int process(std::vector<T> *aSrc)
 {
     // 模拟耗时操作
     std::this_thread::sleep_for(std::chrono::seconds(1)); // 模拟耗时
-    for (auto& value : aSrc) {
+    for (auto && value : *aSrc) {
         value *= 2; // 简单地将数据乘以 2
     }
-    return aSrc.size();
+    return (*aSrc).size();
 }
 
 template<typename T>
-bool process2(T &aSrc)
+bool process2(T *aSrc)
 {
     // 模拟耗时操作
     std::this_thread::sleep_for(std::chrono::seconds(1)); // 模拟耗时
-    aSrc *= 10; // 简单地将数据乘以 2
+    *aSrc *= 10; // 简单地将数据乘以 2
 
     return true;
 }
@@ -41,13 +41,13 @@ int main()
     // 提交任务并收集结果
     std::vector<std::future<int>> results;
     for (auto& buffer : inputBuffers) {
-        results.push_back(pool.enqueue(process<int>, std::ref(buffer))); // 提交任务
+        results.push_back(pool.enqueue(process<int>, &buffer)); // 提交任务
     }
 
     double dt = 999.25;
 
     // enqueue and store future
-    auto result = pool.enqueue(process2<double>, std::ref(dt));
+    auto result = pool.enqueue(process2<double>, &dt);
 
     // 等待所有任务完成并输出结果
     for(auto && result: results)
