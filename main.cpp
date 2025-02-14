@@ -37,17 +37,24 @@ int main()
         // enqueue and store future
         auto result = pool.enqueue(process<int>, &buffer);
 
-        auto ret = result.get();
-        std::cout << "ret " << ret << std::endl;
+        // 处理任务结果
+        // 这里只示例取出一个 future 的处理方式，假设程序在某个时刻停止或得到了其他条件来退出循环
+        std::cout << "Added task for buffer " << i << std::endl;
 
-        std::cout << "Buffer " << i << ": ";
-        for (auto && val : buffer) {
-            std::cout << val << ' ';
+        if (result.wait_for(std::chrono::milliseconds(0)) == std::future_status::ready)
+        {
+            auto ret = result.get();
+            std::cout << "ret " << ret << std::endl;
+
+            std::cout << "Buffer " << i << ": ";
+            for (auto && val : buffer) {
+                std::cout << val << ' ';
+            }
+            std::cout << std::endl;
+
+            auto ret2 = process2(&buffer[0]);
+            std::cout << "ret2 " << ret2 << ' ' << buffer[0] << std::endl;
         }
-        std::cout << std::endl;
-
-        auto ret2 = process2(&buffer[0]);
-        std::cout << "ret2 " << ret2 << ' ' << buffer[0] << std::endl;
 
         std::this_thread::sleep_for(std::chrono::milliseconds(250)); // 模拟耗时
     }
