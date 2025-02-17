@@ -1,25 +1,20 @@
-#include <iostream>
-
 #include "ThreadPool.h"
 
-// 模拟耗时操作的回调函数，enqueue 方法的设计需要能够接受一个可调用对象（如函数指针或 lambda 表达式）和其参数。
-template<typename T>
-int process(std::vector<T> *aSrc)
+int processLongTime(int val)
 {
-    // 模拟耗时操作
-    std::this_thread::sleep_for(std::chrono::seconds(1)); // 模拟耗时
-    for (auto && value : *aSrc) {
-        value *= 2; // 简单地将数据乘以 2
-    }
-    return (*aSrc).size();
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000)); // 模拟任务耗时
+    val = val*10; // 简单地将数据乘以 2
+
+    return val;
 }
 
-template<typename T>
-bool process2(T *aSrc)
+void producer(ThreadPool& pool)
 {
-    *aSrc *= 10; // 简单地将数据乘以 2
-
-    return true;
+    for (int i = 0; i < 8; ++i) {
+        pool.enqueue(processLongTime, i); // 将任务添加到线程池
+        std::cout << "Task " << i << " added to the pool." << std::endl;
+//        std::this_thread::sleep_for(std::chrono::milliseconds(10)); // 定时添加任务
+    }
 }
 
 int main()
@@ -30,34 +25,13 @@ int main()
     // 创建指定线程数量的线程池
     ThreadPool pool(4);
 
-    // 模拟输入数据流
-    for (int i = 0; i < 16; ++i) {
-        std::vector<int> buffer(10, i);
+    // 启动生产者线程
+    std::thread producerThread(producer, std::ref(pool));
 
-        // enqueue and store future
-        auto result = pool.enqueue(process<int>, &buffer);
+    // 等待线程完成
+    producerThread.join();
 
-        // 处理任务结果
-        // 这里只示例取出一个 future 的处理方式，假设程序在某个时刻停止或得到了其他条件来退出循环
-        std::cout << "Added task for buffer " << i << std::endl;
-
-        if (result.wait_for(std::chrono::milliseconds(0)) == std::future_status::ready)
-        {
-            auto ret = result.get();
-            std::cout << "ret " << ret << std::endl;
-
-            std::cout << "Buffer " << i << ": ";
-            for (auto && val : buffer) {
-                std::cout << val << ' ';
-            }
-            std::cout << std::endl;
-
-            auto ret2 = process2(&buffer[0]);
-            std::cout << "ret2 " << ret2 << ' ' << buffer[0] << std::endl;
-        }
-
-        std::this_thread::sleep_for(std::chrono::milliseconds(250)); // 模拟耗时
-    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(2100)); // 定时添加任务
 
     // 获取当前时间，作为开始时间
     auto end = std::chrono::high_resolution_clock::now();
