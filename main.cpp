@@ -20,7 +20,8 @@ bool consumer(int result)
 void producer()
 {
     // create thread pool with 4 worker threads
-    ThreadPool pool(4, consumer);
+    ThreadPool pool(4);
+    pool.registerConsumerCallBack(consumer);
 
     for (int i = 0; i < 8; ++i) {
         // enqueue

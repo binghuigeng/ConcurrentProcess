@@ -13,7 +13,8 @@
 
 class ThreadPool {
 public:
-    ThreadPool(size_t, std::function<bool(int)> consumer);
+    ThreadPool(size_t);
+    void registerConsumerCallBack(std::function<bool(int)> consumer);
     template<class F, class... Args>
     auto enqueue(F&& f, Args&&... args)
         -> void;
@@ -53,8 +54,8 @@ private:
 };
  
 // the constructor just launches some amount of workers
-inline ThreadPool::ThreadPool(size_t threads, std::function<bool(int)> consumer)
-    :   stop(false), done(false), consumer_function(consumer)
+inline ThreadPool::ThreadPool(size_t threads)
+    :   stop(false), done(false)
 {
     // start the consumer thread to process completed task
     consumer_thread = std::thread(&ThreadPool::consumerCompletedTask, this);
@@ -81,6 +82,12 @@ inline ThreadPool::ThreadPool(size_t threads, std::function<bool(int)> consumer)
                 }
             }
         );
+}
+
+// register consumer callback function
+inline void ThreadPool::registerConsumerCallBack(std::function<bool(int)> consumer)
+{
+    consumer_function = std::move(consumer);
 }
 
 // add new work item to the pool
