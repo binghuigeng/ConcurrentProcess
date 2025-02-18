@@ -3,19 +3,19 @@
 MultiThreadHandle::MultiThreadHandle(size_t threads)
     :   pool(threads)
 {
-//    std::cout << "-----------------------------MultiThreadHandle gouzao";
+//    std::cout << "-----------------------------MultiThreadHandle gouzao" << std::endl;
     // 注册消费者回调函数
     pool.registerConsumerCallBack([this](int result) { return consumer(result); });
 }
 
 MultiThreadHandle::~MultiThreadHandle()
 {
-//    std::cout << "-----------------------------MultiThreadHandle xigou";
+//    std::cout << "-----------------------------MultiThreadHandle xigou" << std::endl;
 }
 
-size_t MultiThreadHandle::producer()
+int MultiThreadHandle::producer()
 {
-    size_t counter = 0;
+    int counter = 0;
     for (counter = 0; counter < 8; ++counter) {
         // 添加任务到线程池
         pool.enqueue(&MultiThreadHandle::processLongTime, this, counter);

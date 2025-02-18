@@ -9,7 +9,7 @@ public:
     MultiThreadHandle(size_t threads);
     ~MultiThreadHandle();
 
-    size_t producer();
+    int producer();
 
 private:
     int processLongTime(int value);

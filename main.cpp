@@ -7,7 +7,7 @@ int main()
 
     {
         MultiThreadHandle handle(4);
-        size_t counter = handle.producer();
+        int counter = handle.producer();
 
         std::cout << "added to the pool tasks: " << counter << std::endl;
     }
