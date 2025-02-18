@@ -42,14 +42,14 @@ private:
     // completed tasks queue
     std::queue<int> completed_tasks;
 
-    // consumer thread for completed tasks
+    // consumer thread for completed task
     std::thread consumer_thread;
 
     // consumer function
     std::function<bool(int)> consumer_function;
 
-    // store the futures for completed tasks
-    std::queue<std::future<int>> futures;  // Store future results
+    // store future
+    std::queue<std::future<int>> results;
 };
  
 // the constructor just launches some amount of workers
@@ -110,7 +110,7 @@ auto ThreadPool::enqueue(F&& f, Args&&... args)
 
     condition.notify_one();
     // move the future to the queue
-    futures.push(std::move(res));
+    results.push(std::move(res));
 }
 
 // the destructor joins all threads
@@ -144,8 +144,9 @@ inline void ThreadPool::notifyTaskCompleted()
         if(done)
             throw std::runtime_error("notifyTaskCompleted on stopped ThreadPool");
 
-        completed_tasks.emplace(futures.front().get());
-        futures.pop();
+        // get result from future
+        completed_tasks.emplace(results.front().get());
+        results.pop();
     }
     consumer_condition.notify_one();
 }

@@ -10,15 +10,6 @@ int processLongTime(int val)
     return val;
 }
 
-void producer(ThreadPool& pool)
-{
-    for (int i = 0; i < 8; ++i) {
-        pool.enqueue(processLongTime, i);
-        std::cout << "Task " << i << " added to the pool." << std::endl;
-//        std::this_thread::sleep_for(std::chrono::milliseconds(100)); // 定时添加任务
-    }
-}
-
 bool consumer(int result)
 {
     std::cout << "Task result: " << result << std::endl;
@@ -26,21 +17,29 @@ bool consumer(int result)
     return true;  // or some other logic
 }
 
+void producer()
+{
+    // create thread pool with 4 worker threads
+    ThreadPool pool(4, consumer);
+
+    for (int i = 0; i < 8; ++i) {
+        // enqueue
+        pool.enqueue(processLongTime, i);
+        std::cout << "Task " << i << " added to the pool." << std::endl;
+//        std::this_thread::sleep_for(std::chrono::milliseconds(100)); // 定时添加任务
+    }
+}
+
 int main()
 {
     // 获取当前时间，作为开始时间
     auto start = std::chrono::high_resolution_clock::now();
 
-    // 创建指定线程数量的线程池
-    ThreadPool pool(4, consumer);
-
     // 启动生产者线程
-    std::thread producerThread(producer, std::ref(pool));
+    std::thread producerThread(producer);
 
     // 等待线程完成
     producerThread.join();
-
-    std::this_thread::sleep_for(std::chrono::milliseconds(2100)); // 定时添加任务
 
     // 获取当前时间，作为开始时间
     auto end = std::chrono::high_resolution_clock::now();
