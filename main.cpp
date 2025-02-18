@@ -1,3 +1,5 @@
+#include <iostream>
+
 #include "ThreadPool.h"
 
 int processLongTime(int val)
@@ -11,10 +13,17 @@ int processLongTime(int val)
 void producer(ThreadPool& pool)
 {
     for (int i = 0; i < 8; ++i) {
-        pool.enqueue(processLongTime, i); // 将任务添加到线程池
+        pool.enqueue(processLongTime, i);
         std::cout << "Task " << i << " added to the pool." << std::endl;
-//        std::this_thread::sleep_for(std::chrono::milliseconds(10)); // 定时添加任务
+//        std::this_thread::sleep_for(std::chrono::milliseconds(100)); // 定时添加任务
     }
+}
+
+bool consumer(int result)
+{
+    std::cout << "Task result: " << result << std::endl;
+
+    return true;  // or some other logic
 }
 
 int main()
@@ -23,7 +32,7 @@ int main()
     auto start = std::chrono::high_resolution_clock::now();
 
     // 创建指定线程数量的线程池
-    ThreadPool pool(4);
+    ThreadPool pool(4, consumer);
 
     // 启动生产者线程
     std::thread producerThread(producer, std::ref(pool));
