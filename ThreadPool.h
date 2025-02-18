@@ -10,6 +10,7 @@
 #include <future>
 #include <functional>
 #include <stdexcept>
+#include <iostream>
 
 class ThreadPool {
 public:
@@ -151,8 +152,12 @@ inline void ThreadPool::notifyTaskCompleted()
         if(done)
             throw std::runtime_error("notifyTaskCompleted on stopped ThreadPool");
 
-        // get result from future
-        completed_tasks.emplace(results.front().get());
+        try {
+            // get result from future and add it to completed_tasks
+            completed_tasks.emplace(results.front().get());
+        } catch (const std::exception& e) {
+            std::cerr << "Error retrieving result: " << e.what() << std::endl;
+        }
         results.pop();
     }
     consumer_condition.notify_one();
