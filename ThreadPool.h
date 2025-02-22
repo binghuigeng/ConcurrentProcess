@@ -18,6 +18,7 @@ public:
     void registerConsumerCallBack(std::function<bool(int, int, unsigned short*, size_t)> consumer);
     template<class F, class... Args>
     void enqueue(F&& f, Args&&... args);
+    bool isActive() const;
     ~ThreadPool();
 
 private:
@@ -41,8 +42,6 @@ private:
     bool stop;
     bool done;
 
-    // completed tasks queue
-//    std::queue<int> completed_tasks;
     // completed tasks queue (holds result, number, framebuf, and size)
     std::queue<std::tuple<int, int, unsigned short*, size_t>> completed_tasks;
 
@@ -54,11 +53,14 @@ private:
 
     // store future
     std::queue<std::future<int>> results;
+
+    // tracking the number of active threads
+    std::atomic<size_t> active_threads;
 };
 
 // the constructor just launches some amount of workers
 inline ThreadPool::ThreadPool(size_t threads)
-    :   stop(false), done(false)
+    :   stop(false), done(false), active_threads(0)
 {
     // start the consumer thread to process completed task
     consumer_thread = std::thread(&ThreadPool::consumerCompletedTask, this);
@@ -81,7 +83,13 @@ inline ThreadPool::ThreadPool(size_t threads)
                         this->tasks.pop();
                     }
 
+                    // increase active thread count
+                    ++active_threads;
+
                     task();
+
+                    // decrease active thread count
+                    --active_threads;
                 }
             }
         );
@@ -120,6 +128,13 @@ void ThreadPool::enqueue(F&& f, Args&&... args)
     condition.notify_one();
     // move the future to the queue
     results.push(std::move(res));
+}
+
+// check active threads and task queues to determine whether the thread pool is active
+inline bool ThreadPool::isActive() const
+{
+    // return true if active threads greater than 0 or task queue is not empty
+    return active_threads > 0 || !tasks.empty();
 }
 
 // the destructor joins all threads

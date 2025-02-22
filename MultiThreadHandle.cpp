@@ -1,5 +1,4 @@
 #include "MultiThreadHandle.h"
-#include <string.h>
 
 MultiThreadHandle::MultiThreadHandle(size_t threads)
     :   pool(threads)
@@ -12,11 +11,21 @@ MultiThreadHandle::MultiThreadHandle(size_t threads)
 MultiThreadHandle::~MultiThreadHandle()
 {
     std::cout << "-----------------------------MultiThreadHandle xigou" << std::endl;
+    std::cout << "Thread Pool isActive: " << pool.isActive() << std::endl;
+    // 判断是否为 nullptr
+    if (buffer) {
+        while (pool.isActive()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        delete[] buffer;  // 释放内存
+        buffer = nullptr;  // 设置为 nullptr，避免悬挂指针
+    }
 }
 
 int MultiThreadHandle::producer()
 {
     unsigned short counter = 0;
+    std::cout << "Thread Pool isActive: " << pool.isActive() << std::endl;
     for (counter = 0; counter < 8; ++counter) {
         buffer = new unsigned short[10]; // 分配10个unsigned short
         // 使用循环填充 buffer
@@ -26,6 +35,7 @@ int MultiThreadHandle::producer()
         // 添加任务到线程池
         pool.enqueue(&MultiThreadHandle::processLongTime, this, counter, buffer, sizeof(unsigned short) * 10);
         std::cout << "Task " << counter << " added to the pool." << std::endl;
+        std::cout << "Thread Pool isActive: " << pool.isActive() << std::endl;
         std::this_thread::sleep_for(std::chrono::milliseconds(1)); // 定时添加任务
     }
 
