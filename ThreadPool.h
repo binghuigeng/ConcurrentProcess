@@ -15,15 +15,15 @@
 class ThreadPool {
 public:
     ThreadPool(size_t);
-    void registerConsumerCallBack(std::function<bool(int)> consumer);
+    void registerConsumerCallBack(std::function<bool(int, int, unsigned short*, size_t)> consumer);
     template<class F, class... Args>
-    auto enqueue(F&& f, Args&&... args)
-        -> void;
+    void enqueue(F&& f, Args&&... args);
     ~ThreadPool();
 
 private:
     // notify consumer that a task has been completed
-    void notifyTaskCompleted();
+    template<class... Args>
+    void notifyTaskCompleted(Args&&... args);
 
     // consumer thread for handle completed task
     void consumerCompletedTask();
@@ -33,7 +33,7 @@ private:
     std::vector< std::thread > workers;
     // the task queue
     std::queue< std::function<void()> > tasks;
-    
+
     // synchronization
     std::mutex queue_mutex;
     std::condition_variable condition;
@@ -42,18 +42,20 @@ private:
     bool done;
 
     // completed tasks queue
-    std::queue<int> completed_tasks;
+//    std::queue<int> completed_tasks;
+    // completed tasks queue (holds result, number, framebuf, and size)
+    std::queue<std::tuple<int, int, unsigned short*, size_t>> completed_tasks;
 
     // consumer thread for completed task
     std::thread consumer_thread;
 
     // consumer function
-    std::function<bool(int)> consumer_function;
+    std::function<bool(int, int, unsigned short*, size_t)> consumer_function;
 
     // store future
     std::queue<std::future<int>> results;
 };
- 
+
 // the constructor just launches some amount of workers
 inline ThreadPool::ThreadPool(size_t threads)
     :   stop(false), done(false)
@@ -86,22 +88,21 @@ inline ThreadPool::ThreadPool(size_t threads)
 }
 
 // register consumer callback function
-inline void ThreadPool::registerConsumerCallBack(std::function<bool(int)> consumer)
+inline void ThreadPool::registerConsumerCallBack(std::function<bool(int, int, unsigned short*, size_t)> consumer)
 {
     consumer_function = std::move(consumer);
 }
 
 // add new work item to the pool
 template<class F, class... Args>
-auto ThreadPool::enqueue(F&& f, Args&&... args)
-    -> void
+void ThreadPool::enqueue(F&& f, Args&&... args)
 {
     using return_type = typename std::result_of<F(Args...)>::type;
 
     auto task = std::make_shared< std::packaged_task<return_type()> >(
             std::bind(std::forward<F>(f), std::forward<Args>(args)...)
         );
-        
+
     std::future<return_type> res = task->get_future();
     {
         std::unique_lock<std::mutex> lock(queue_mutex);
@@ -110,9 +111,9 @@ auto ThreadPool::enqueue(F&& f, Args&&... args)
         if(stop)
             throw std::runtime_error("enqueue on stopped ThreadPool");
 
-        tasks.emplace([task, this](){
+        tasks.emplace([task, this, args...](){
             (*task)();
-            this->notifyTaskCompleted();
+            this->notifyTaskCompleted(args...);
         });
     }
 
@@ -143,7 +144,8 @@ inline ThreadPool::~ThreadPool()
 }
 
 // notify consumer that a task has been completed
-inline void ThreadPool::notifyTaskCompleted()
+template<class... Args>
+inline void ThreadPool::notifyTaskCompleted(Args&&... args)
 {
     {
         std::unique_lock<std::mutex> lock(queue_mutex);
@@ -153,13 +155,18 @@ inline void ThreadPool::notifyTaskCompleted()
             throw std::runtime_error("notifyTaskCompleted on stopped ThreadPool");
 
         try {
+            // get result, number, framebuf, size from args
+            auto number = std::get<1>(std::forward_as_tuple(args...));
+            auto framebuf = std::get<2>(std::forward_as_tuple(args...));
+            auto size = std::get<3>(std::forward_as_tuple(args...));
             // get result from future and add it to completed_tasks
-            completed_tasks.emplace(results.front().get());
+            completed_tasks.emplace(results.front().get(), number, framebuf, size);
         } catch (const std::exception& e) {
             std::cerr << "Error retrieving result: " << e.what() << std::endl;
         }
         results.pop();
     }
+
     consumer_condition.notify_one();
 }
 
@@ -168,24 +175,22 @@ inline void ThreadPool::consumerCompletedTask()
 {
     while (true) {
         int result;
+        int number;
+        unsigned short* framebuf;
+        size_t size;
 
         {
             std::unique_lock<std::mutex> lock(queue_mutex);
             consumer_condition.wait(lock, [this] { return this->done || !this->completed_tasks.empty(); });
             if (done && completed_tasks.empty())
                 return;
-            if (!completed_tasks.empty()) {
-                result = completed_tasks.front();
-                completed_tasks.pop();
-            }
-            else {
-                continue;
-            }
-
+            // unpack the result, framebuf, and size
+            std::tie(result, number, framebuf, size) = std::move(completed_tasks.front());
+            completed_tasks.pop();
         }
 
         // call the consumer function and pass the result
-        consumer_function(result);
+        consumer_function(result, number, framebuf, size);
     }
 }
 

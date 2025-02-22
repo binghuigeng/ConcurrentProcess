@@ -11,12 +11,15 @@ public:
 
     int producer();
 
+    int processLongTime(int number, unsigned short* framebuf, size_t size);
+
 private:
-    int processLongTime(int value);
-    bool consumer(int result);
+    bool consumer(int result, int number, unsigned short* framebuf, size_t size);
 
 private:
     ThreadPool pool;
+
+    unsigned short* buffer = nullptr;
 };
 
 #endif // MULTITHREADHANDLE_H
