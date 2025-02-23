@@ -11,10 +11,10 @@ public:
 
     int producer();
 
-    int processLongTime(int number, unsigned short* framebuf, size_t size);
+    std::tuple<int, int, unsigned short*, size_t> processLongTime(int number, unsigned short* framebuf, size_t size);
 
 private:
-    bool consumer(int result, int number, unsigned short* framebuf, size_t size);
+    void consumer(std::tuple<int, int, unsigned short*, size_t> t);
 
 private:
     ThreadPool pool;

@@ -5,14 +5,14 @@ MultiThreadHandle::MultiThreadHandle(size_t threads)
 {
     std::cout << "-----------------------------MultiThreadHandle gouzao" << std::endl;
     // 注册消费者回调函数
-    pool.registerConsumerCallBack([this](int result, int number, unsigned short* framebuf, size_t size) { return consumer(result, number, framebuf, size); });
+    pool.registerConsumerCallBack([this](std::tuple<int, int, unsigned short*, size_t> t) { return consumer(t); });
 }
 
 MultiThreadHandle::~MultiThreadHandle()
 {
     std::cout << "-----------------------------MultiThreadHandle xigou" << std::endl;
 //    std::cout << "Thread Pool isActive: " << pool.isActive() << std::endl;
-    std::cout << "active threads amount: " << pool.workingThreadCount() << std::endl;
+//    std::cout << "active threads amount: " << pool.workingThreadCount() << std::endl;
     // 判断是否为 nullptr
     if (buffer) {
         pool.waitForCompletion();
@@ -25,7 +25,7 @@ int MultiThreadHandle::producer()
 {
     unsigned short counter = 0;
 //    std::cout << "Thread Pool isActive: " << pool.isActive() << std::endl;
-    std::cout << "active threads amount: " << pool.workingThreadCount() << std::endl;
+//    std::cout << "active threads amount: " << pool.workingThreadCount() << std::endl;
     for (counter = 0; counter < 8; ++counter) {
         buffer = new unsigned short[10]; // 分配10个unsigned short
         // 使用循环填充 buffer
@@ -36,14 +36,14 @@ int MultiThreadHandle::producer()
         pool.enqueue(&MultiThreadHandle::processLongTime, this, counter, buffer, sizeof(unsigned short) * 10);
         std::cout << "Task " << counter << " added to the pool." << std::endl;
 //        std::cout << "Thread Pool isActive: " << pool.isActive() << std::endl;
-        std::cout << "active threads amount: " << pool.workingThreadCount() << std::endl;
-        std::this_thread::sleep_for(std::chrono::milliseconds(1)); // 定时添加任务
+//        std::cout << "active threads amount: " << pool.workingThreadCount() << std::endl;
+//        std::this_thread::sleep_for(std::chrono::milliseconds(1)); // 定时添加任务
     }
 
     return counter;
 }
 
-int MultiThreadHandle::processLongTime(int number, unsigned short* framebuf, size_t size)
+std::tuple<int, int, unsigned short*, size_t> MultiThreadHandle::processLongTime(int number, unsigned short* framebuf, size_t size)
 {
     std::this_thread::sleep_for(std::chrono::milliseconds(1000)); // 模拟任务耗时
 
@@ -52,16 +52,19 @@ int MultiThreadHandle::processLongTime(int number, unsigned short* framebuf, siz
         framebuf[i] *= 10;  // 将每个元素乘以 10
     }
 
-    return number*10;
+    return std::make_tuple(number*10, number, framebuf, size);
 }
 
-bool MultiThreadHandle::consumer(int result, int number, unsigned short* framebuf, size_t size)
+void MultiThreadHandle::consumer(std::tuple<int, int, unsigned short*, size_t> t)
 {
+    int result;
+    int number;
+    unsigned short* framebuf;
+    size_t size;
+    std::tie(result, number, framebuf, size) = t;
     std::cout << "Task result: " << result << ' ' << number << ' ' << size << std::endl;
     for (unsigned short i = 0; i < size / sizeof(unsigned short); ++i) {
         std::cout << framebuf[i] << ' ';
     }
     std::cout << std::endl;
-
-    return true;  // or some other logic
 }
