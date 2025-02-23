@@ -27,9 +27,6 @@ private:
     // notify consumer that a task has been completed
     void notifyTaskCompleted();
 
-    // consumer thread for handle completed task
-    void consumerCompletedTask();
-
 private:
     // need to keep track of threads so we can join them
     std::vector< std::thread > workers;
@@ -39,15 +36,7 @@ private:
     // synchronization
     std::mutex queue_mutex;
     std::condition_variable condition;
-    std::condition_variable consumer_condition;  // notify consumer of condition variable
     bool stop;
-    bool done;
-
-    // completed tasks queue (holds result, number, framebuf, and size)
-    std::queue<std::tuple<int, int, unsigned short*, size_t>> completed_tasks;
-
-    // consumer thread for completed task
-    std::thread consumer_thread;
 
     // consumer function
     std::function<void(std::tuple<int, int, unsigned short*, size_t>)> consumer_function;
@@ -61,11 +50,9 @@ private:
 
 // the constructor just launches some amount of workers
 inline ThreadPool::ThreadPool(size_t threads)
-    :   stop(false), done(false), active_threads(0)
+    :   stop(false), active_threads(0)
 {
     std::cout << "-----------------------------ThreadPool gouzao" << std::endl;
-    // start the consumer thread to process completed task
-    consumer_thread = std::thread(&ThreadPool::consumerCompletedTask, this);
 
     for(size_t i = 0;i<threads;++i)
         workers.emplace_back(
@@ -157,14 +144,6 @@ inline void ThreadPool::waitForCompletion()
     condition.notify_all();
     for(std::thread &worker: workers)
         worker.join();
-
-    {
-        std::unique_lock<std::mutex> lock(queue_mutex);
-        done = true;
-    }
-
-    consumer_condition.notify_one();
-    consumer_thread.join();
 }
 
 // the destructor joins all threads
@@ -181,45 +160,15 @@ inline ThreadPool::~ThreadPool()
 inline void ThreadPool::notifyTaskCompleted()
 {
     {
-        std::unique_lock<std::mutex> lock(queue_mutex);
-
-        // don't allow notifyTaskCompleted after stopping the pool
-        if(done)
-            throw std::runtime_error("notifyTaskCompleted on stopped ThreadPool");
+        std::lock_guard<std::mutex> lock(queue_mutex);
 
         try {
-            // get result from future and add it to completed_tasks
-            completed_tasks.emplace(results.front().get());
+            // call the consumer function and pass the result after get result from future
+            consumer_function(results.front().get());
         } catch (const std::exception& e) {
             std::cerr << "Error retrieving result: " << e.what() << std::endl;
         }
         results.pop();
-    }
-
-    consumer_condition.notify_one();
-}
-
-// consumer thread for handle completed task
-inline void ThreadPool::consumerCompletedTask()
-{
-    while (true) {
-        int result;
-        int number;
-        unsigned short* framebuf;
-        size_t size;
-
-        {
-            std::unique_lock<std::mutex> lock(queue_mutex);
-            consumer_condition.wait(lock, [this] { return this->done || !this->completed_tasks.empty(); });
-            if (done && completed_tasks.empty())
-                return;
-            // unpack the result, framebuf, and size
-            std::tie(result, number, framebuf, size) = std::move(completed_tasks.front());
-            completed_tasks.pop();
-        }
-
-        // call the consumer function and pass the result
-        consumer_function(std::make_tuple(result, number, framebuf, size));
     }
 }
 
