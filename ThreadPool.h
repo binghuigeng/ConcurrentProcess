@@ -19,6 +19,8 @@ public:
     template<class F, class... Args>
     void enqueue(F&& f, Args&&... args);
     bool isActive() const;
+    size_t workingThreadCount() const;
+    void waitForCompletion();
     ~ThreadPool();
 
 private:
@@ -62,6 +64,7 @@ private:
 inline ThreadPool::ThreadPool(size_t threads)
     :   stop(false), done(false), active_threads(0)
 {
+    std::cout << "-----------------------------ThreadPool gouzao" << std::endl;
     // start the consumer thread to process completed task
     consumer_thread = std::thread(&ThreadPool::consumerCompletedTask, this);
 
@@ -137,8 +140,15 @@ inline bool ThreadPool::isActive() const
     return active_threads > 0 || !tasks.empty();
 }
 
-// the destructor joins all threads
-inline ThreadPool::~ThreadPool()
+// get the number of active threads
+inline size_t ThreadPool::workingThreadCount() const
+{
+    // return the number of active threads
+    return active_threads.load();
+}
+
+// wait for all tasks to complete
+inline void ThreadPool::waitForCompletion()
 {
     {
         std::unique_lock<std::mutex> lock(queue_mutex);
@@ -156,6 +166,16 @@ inline ThreadPool::~ThreadPool()
 
     consumer_condition.notify_one();
     consumer_thread.join();
+}
+
+// the destructor joins all threads
+inline ThreadPool::~ThreadPool()
+{
+    std::cout << "-----------------------------ThreadPool xigou" << std::endl;
+    if (isActive()) {
+        std::cout << "-----------------------------ThreadPool xigou isActive" << std::endl;
+        waitForCompletion();
+    }
 }
 
 // notify consumer that a task has been completed
