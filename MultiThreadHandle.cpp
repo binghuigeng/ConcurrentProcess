@@ -4,8 +4,11 @@ MultiThreadHandle::MultiThreadHandle(size_t threads)
     :   pool(threads)
 {
     std::cout << "-----------------------------MultiThreadHandle gouzao" << std::endl;
-    // 注册消费者回调函数
-    pool.registerConsumerCallBack([this](std::tuple<int, int, unsigned short*, size_t> t) { return consumer(t); });
+    pool.dequeue<std::tuple<int, int, unsigned short*, size_t>>(
+        [this](std::tuple<int, int, unsigned short*, size_t> t) {
+            this->consumer(t);
+        }
+    );
 }
 
 MultiThreadHandle::~MultiThreadHandle()

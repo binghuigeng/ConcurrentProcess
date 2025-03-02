@@ -15,7 +15,9 @@
 class ThreadPool {
 public:
     ThreadPool(size_t);
-    void registerConsumerCallBack(std::function<void(std::tuple<int, int, unsigned short*, size_t>)> consumer);
+
+    template<class T>
+    void dequeue(std::function<void(T)> consumer);
     template<class F, class... Args>
     void enqueue(F&& f, Args&&... args);
     bool isActive() const;
@@ -39,7 +41,7 @@ private:
     bool stop;
 
     // consumer function
-    std::function<void(std::tuple<int, int, unsigned short*, size_t>)> consumer_function;
+    std::function<void(void*)> consumer_function;
 
     // store future
     std::queue<std::future<std::tuple<int, int, unsigned short*, size_t>>> results;
@@ -85,9 +87,12 @@ inline ThreadPool::ThreadPool(size_t threads)
 }
 
 // register consumer callback function
-inline void ThreadPool::registerConsumerCallBack(std::function<void(std::tuple<int, int, unsigned short*, size_t>)> consumer)
+template<class T>
+inline void ThreadPool::dequeue(std::function<void(T)> consumer)
 {
-    consumer_function = std::move(consumer);
+    consumer_function = [consumer](void* data) {
+        consumer(*static_cast<T*>(data));
+    };
 }
 
 // add new work item to the pool
@@ -163,12 +168,17 @@ inline void ThreadPool::notifyTaskCompleted()
         std::lock_guard<std::mutex> lock(queue_mutex);
 
         try {
-            // call the consumer function and pass the result after get result from future
-            consumer_function(results.front().get());
+            // get result from future
+            auto result = results.front().get();
+            results.pop();
+
+            // call the consumer function and pass the result
+            if (consumer_function) {
+                consumer_function(&result);  // 传递指针
+            }
         } catch (const std::exception& e) {
             std::cerr << "Error retrieving result: " << e.what() << std::endl;
         }
-        results.pop();
     }
 }
 
